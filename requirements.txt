@@ -1,0 +1,10 @@
+flask>=3.0
+pandas
+numpy
+scikit-learn
+xgboost
+lifelines
+matplotlib
+seaborn
+tqdm
+joblib
