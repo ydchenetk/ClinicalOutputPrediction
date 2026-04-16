@@ -96,10 +96,12 @@ function renderDatasetCard(ds) {
   div.innerHTML = '<div class="ds-header"><span class="ds-label">Dataset '+ds.id+'</span>'
     +'<button class="btn btn-sm btn-outline-danger ms-auto py-0 px-1" onclick="removeDataset('+ds.id+')"><i class="bi bi-x-lg"></i></button></div>'
     +'<div class="row g-2 mb-2">'
-    +'<div class="col-6"><label class="form-label">File</label><select class="form-select form-select-sm" id="ds-file-'+ds.id+'" onchange="onDsFileChange('+ds.id+')">'+fileOpts+'</select></div>'
-    +'<div class="col-6"><label class="form-label">Pipeline Type</label><select class="form-select form-select-sm" id="ds-type-'+ds.id+'" onchange="onDsTypeChange('+ds.id+')">'+typeOpts+'</select></div>'
+    +'<div class="col-6"><label class="form-label">File</label><select class="form-select form-select-sm" id="ds-file-'+ds.id+'">'+fileOpts+'</select></div>'
+    +'<div class="col-6"><label class="form-label">Pipeline Type</label><select class="form-select form-select-sm" id="ds-type-'+ds.id+'">'+typeOpts+'</select></div>'
     +'</div><div class="ds-config" id="ds-config-'+ds.id+'"><div class="text-muted small">Select a file to load columns.</div></div>';
   container.appendChild(div);
+  $('#ds-file-'+ds.id).select2({ theme:'bootstrap-5', width:'100%', minimumResultsForSearch:0 }).on('change', function(){ onDsFileChange(ds.id); });
+  $('#ds-type-'+ds.id).select2({ theme:'bootstrap-5', width:'100%', minimumResultsForSearch:0 }).on('change', function(){ onDsTypeChange(ds.id); });
 }
 
 async function onDsFileChange(id) {
@@ -133,14 +135,27 @@ function renderDsConfig(ds) {
   var colOpts = ds.columns.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join('');
   var colOptsE = '<option value="">Select Column …</option>'+colOpts;
   var paramLabel = ds.type==='general' ? 'idx_cols' : 'cols';
-  h += '<div class="mb-2"><label class="form-label fw-semibold">Columns ('+paramLabel+')</label><select class="form-select form-select-sm col-multi" id="ds-cols-'+ds.id+'" multiple>'+colOpts+'</select></div>';
+
+  h += '<div class="mb-2"><div class="d-flex align-items-center mb-1"><label class="form-label fw-semibold mb-0">Columns ('+paramLabel+')</label>'
+    +'<button class="btn btn-sm btn-outline-secondary ms-auto py-0 px-2" onclick="copyFromPrevious('+ds.id+')" title="Copy column selections from previous dataset"><i class="bi bi-clipboard me-1"></i>Copy From Previous</button></div>'
+    +'<div class="input-group input-group-sm mb-1"><input type="text" class="form-control" id="ds-cols-text-'+ds.id+'" placeholder="Paste names: &quot;VAR1&quot;, &quot;VAR2&quot; or VAR1, VAR2">'
+    +'<button class="btn btn-outline-primary" onclick="applyPastedText('+ds.id+')"><i class="bi bi-check-lg me-1"></i>Apply</button></div>'
+    +'<input type="text" class="form-control form-control-sm mb-1" placeholder="Search columns …" oninput="filterNativeSelect(\'ds-cols-'+ds.id+'\', this.value)">'
+    +'<select class="form-select form-select-sm" id="ds-cols-'+ds.id+'" multiple style="height:140px;">'+colOpts+'</select>'
+    +'<div class="mt-1 small"><a href="#" onclick="selectAllNative(\'ds-cols-'+ds.id+'\',true);return false;">Select All</a> | <a href="#" onclick="selectAllNative(\'ds-cols-'+ds.id+'\',false);return false;">Clear All</a></div></div>';
+
   if (ds.type === 'general') {
-    h += '<div class="mb-2"><label class="form-label fw-semibold">Target Variable <span class="text-muted fw-normal">(Optional)</span></label><select class="form-select form-select-sm col-multi" id="ds-target-'+ds.id+'" multiple>'+colOpts+'</select></div>';
-    h += '<div class="mb-2"><label class="form-label fw-semibold">Target Visit <span class="text-muted fw-normal">(Optional)</span></label><div class="row g-2"><div class="col-6"><select class="form-select form-select-sm" id="ds-tv-col-'+ds.id+'" onchange="loadDsUniqueValues('+ds.id+',\'ds-tv-col-'+ds.id+'\',\'ds-tv-val-'+ds.id+'\')">'+colOptsE+'</select></div><div class="col-6"><select class="form-select form-select-sm" id="ds-tv-val-'+ds.id+'"><option value="">Select Column First</option></select></div></div></div>';
-    h += '<div class="mb-0"><label class="form-label fw-semibold">Filter Variable Value <span class="text-muted fw-normal">(Optional)</span></label><div class="row g-2"><div class="col-6"><select class="form-select form-select-sm" id="ds-fv-col-'+ds.id+'" onchange="loadDsUniqueValues('+ds.id+',\'ds-fv-col-'+ds.id+'\',\'ds-fv-vals-'+ds.id+'\')">'+colOptsE+'</select></div><div class="col-6"><select class="form-select form-select-sm col-multi" id="ds-fv-vals-'+ds.id+'" multiple><option value="">Select Column First</option></select></div></div></div>';
+    h += '<div class="mb-2"><label class="form-label fw-semibold">Target Variable <span class="text-muted fw-normal">(Optional)</span></label>'
+      +'<input type="text" class="form-control form-control-sm mb-1" placeholder="Search columns …" oninput="filterNativeSelect(\'ds-target-'+ds.id+'\', this.value)">'
+      +'<select class="form-select form-select-sm" id="ds-target-'+ds.id+'" multiple style="height:100px;">'+colOpts+'</select></div>';
+    h += '<div class="mb-2"><label class="form-label fw-semibold">Target Visit <span class="text-muted fw-normal">(Optional)</span></label><div class="row g-2"><div class="col-6"><select class="form-select form-select-sm ds-searchable" id="ds-tv-col-'+ds.id+'">'+colOptsE+'</select></div><div class="col-6"><select class="form-select form-select-sm ds-searchable" id="ds-tv-val-'+ds.id+'"><option value="">Select Column First</option></select></div></div></div>';
+    h += '<div class="mb-0"><label class="form-label fw-semibold">Filter Variable Value <span class="text-muted fw-normal">(Optional)</span></label><div class="row g-2"><div class="col-6"><select class="form-select form-select-sm ds-searchable" id="ds-fv-col-'+ds.id+'">'+colOptsE+'</select></div><div class="col-6"><select class="form-select form-select-sm col-multi" id="ds-fv-vals-'+ds.id+'" multiple><option value="">Select Column First</option></select></div></div></div>';
   }
   el.innerHTML = h;
-  $('#ds-config-'+ds.id+' .col-multi').select2({ theme:'bootstrap-5', placeholder:'Select …', allowClear:true, width:'100%', closeOnSelect:false });
+  $('#ds-config-'+ds.id+' .col-multi').select2({ theme:'bootstrap-5', placeholder:'Click or type to search …', allowClear:true, width:'100%', closeOnSelect:false });
+  $('#ds-config-'+ds.id+' .ds-searchable').select2({ theme:'bootstrap-5', width:'100%', minimumResultsForSearch:0 });
+  $('#ds-tv-col-'+ds.id).on('change', function(){ loadDsUniqueValues(ds.id, 'ds-tv-col-'+ds.id, 'ds-tv-val-'+ds.id); });
+  $('#ds-fv-col-'+ds.id).on('change', function(){ loadDsUniqueValues(ds.id, 'ds-fv-col-'+ds.id, 'ds-fv-vals-'+ds.id); });
 }
 
 async function loadDsUniqueValues(dsId, colSelId, valSelId) {
@@ -153,7 +168,8 @@ async function loadDsUniqueValues(dsId, colSelId, valSelId) {
     if (data.error) { valSel.innerHTML = '<option value="">'+data.error+'</option>'; return; }
     valSel.innerHTML = '';
     data.values.forEach(function(v){ var o=document.createElement('option'); o.value=v; o.textContent=v; valSel.appendChild(o); });
-    if (valSel.multiple) $(valSel).select2({ theme:'bootstrap-5', placeholder:'Select Values …', allowClear:true, width:'100%', closeOnSelect:false });
+    if (valSel.multiple) $(valSel).select2({ theme:'bootstrap-5', placeholder:'Type to search …', allowClear:true, width:'100%', closeOnSelect:false, minimumResultsForSearch:0 });
+    else { if ($(valSel).hasClass('select2-hidden-accessible')) $(valSel).select2('destroy'); $(valSel).select2({ theme:'bootstrap-5', width:'100%', minimumResultsForSearch:0 }); }
   } catch(e) { valSel.innerHTML = '<option value="">Error</option>'; }
 }
 
@@ -165,10 +181,64 @@ function expandPreview(dsId) {
   new bootstrap.Modal(document.getElementById('previewModal')).show();
 }
 
+function filterNativeSelect(selId, query) {
+  var sel = document.getElementById(selId);
+  var q = query.toLowerCase();
+  Array.from(sel.options).forEach(function(opt) {
+    opt.style.display = opt.text.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+  });
+}
+
+function selectAllNative(selId, checked) {
+  var sel = document.getElementById(selId);
+  Array.from(sel.options).forEach(function(opt) {
+    if (opt.style.display !== 'none') opt.selected = checked;
+  });
+}
+
+function applyPastedText(dsId) {
+  var input = document.getElementById('ds-cols-text-'+dsId);
+  if (!input || !input.value.trim()) return;
+  var text = input.value;
+  var names = [];
+  var regex = /["']([^"']+)["']|([^,\s]+)/g;
+  var m;
+  while ((m = regex.exec(text)) !== null) {
+    var val = (m[1] || m[2] || '').trim();
+    if (val) names.push(val);
+  }
+  if (!names.length) return;
+  var sel = document.getElementById('ds-cols-'+dsId);
+  if (!sel) return;
+  var notFound = [];
+  names.forEach(function(n) {
+    var found = false;
+    Array.from(sel.options).forEach(function(opt) { if (opt.value === n) { opt.selected = true; found = true; } });
+    if (!found) notFound.push(n);
+  });
+  if (notFound.length) alert('Not found in columns: ' + notFound.join(', '));
+  input.value = '';
+}
+
+function copyFromPrevious(dsId) {
+  var idx = datasets.findIndex(function(d){ return d.id === dsId; });
+  if (idx <= 0) { alert('No previous dataset to copy from.'); return; }
+  var prevDs = datasets[idx - 1];
+  var prevSel = document.getElementById('ds-cols-'+prevDs.id);
+  if (!prevSel) { alert('Previous dataset has no columns selected.'); return; }
+  var prevSelected = Array.from(prevSel.selectedOptions).map(function(o){ return o.value; });
+  if (!prevSelected.length) { alert('No columns selected in Dataset '+prevDs.id+'.'); return; }
+  var curSel = document.getElementById('ds-cols-'+dsId);
+  if (!curSel) return;
+  Array.from(curSel.options).forEach(function(opt) { opt.selected = prevSelected.indexOf(opt.value) >= 0; });
+}
+
 function refreshAnchorDropdown() {
   var sel = document.getElementById('anchor-domain');
+  if ($(sel).hasClass('select2-hidden-accessible')) $(sel).select2('destroy');
   sel.innerHTML = '<option value="">None</option>';
   datasets.forEach(function(ds){ if(ds.file){ var o=document.createElement('option'); o.value=ds.domainKey; o.textContent='Dataset '+ds.id+' ('+ds.file+')'; sel.appendChild(o); } });
+  $(sel).select2({ theme:'bootstrap-5', width:'100%', minimumResultsForSearch:0 });
 }
 
 function runCleaning() {
@@ -192,13 +262,71 @@ function runCleaning() {
   runStep('clean', { steps:['clean'], file_paths:filePaths, cleaning_cfg:{domains:domains, filePaths:filePaths, first:anchor}, binary_cfg:{}, survival_cfg:{} });
 }
 
+var lastCleaningHead = '';
+var fullCleaningData = null;
+
 function renderResults(results, jobId) {
   if (results.cleaning) {
+    lastCleaningHead = results.cleaning.head;
+    if (results.cleaning.full_json) {
+      try { fullCleaningData = JSON.parse(results.cleaning.full_json); } catch(e) { fullCleaningData = null; }
+    }
     var el = document.getElementById('res-cleaning'); el.classList.add('show');
-    el.querySelector('.card-body').innerHTML = '<p><strong>'+results.cleaning.rows+'</strong> rows × <strong>'+results.cleaning.cols+'</strong> columns</p>'
-      +'<div class="table-responsive">'+results.cleaning.head+'</div>'
-      +'<a href="/download/'+jobId+'/analytical.csv" class="btn btn-sm btn-outline-primary mt-2"><i class="bi bi-download me-1"></i>Download Analytical CSV</a>';
+    el.querySelector('.card-body').innerHTML = '<div class="d-flex align-items-center mb-2">'
+      +'<span><strong>'+results.cleaning.rows+'</strong> rows × <strong>'+results.cleaning.cols+'</strong> columns</span>'
+      +'<button class="btn btn-sm btn-outline-secondary ms-auto py-0 px-2" onclick="expandCleaningResult()" title="Expand"><i class="bi bi-arrows-fullscreen"></i></button></div>'
+      +'<div style="max-height:200px; width:0; min-width:100%; overflow:auto; border:1px solid var(--border); border-radius:6px; background:#fff; font-size:.8rem;">'+results.cleaning.head+'</div>'
+      +'<div class="mt-2"><a href="/download/'+jobId+'/'+results.cleaning.download_name+'" class="btn btn-sm btn-outline-primary"><i class="bi bi-download me-1"></i>Download Cleaned Analytical Dataset</a></div>';
   }
 }
+
+var currentPage = 0;
+var pageSize = 10;
+
+function expandCleaningResult() {
+  if (!fullCleaningData) {
+    // Fallback to simple preview
+    document.getElementById('previewModalTitle').textContent = 'Cleaning Result — Analytical Dataset';
+    document.getElementById('previewModalBody').innerHTML = lastCleaningHead;
+    new bootstrap.Modal(document.getElementById('previewModal')).show();
+    return;
+  }
+  currentPage = 0;
+  document.getElementById('previewModalTitle').textContent = 'Cleaning Result — Analytical Dataset ('+fullCleaningData.data.length+' rows)';
+  renderPaginatedTable();
+  new bootstrap.Modal(document.getElementById('previewModal')).show();
+}
+
+function renderPaginatedTable() {
+  var d = fullCleaningData;
+  var totalRows = d.data.length;
+  var totalPages = Math.ceil(totalRows / pageSize);
+  var start = currentPage * pageSize;
+  var end = Math.min(start + pageSize, totalRows);
+  var pageData = d.data.slice(start, end);
+
+  var html = '<div class="d-flex align-items-center justify-content-between mb-2">'
+    +'<span class="small text-muted">Showing rows '+(start+1)+'–'+end+' of '+totalRows+'</span>'
+    +'<div class="d-flex align-items-center gap-2">'
+    +'<button class="btn btn-sm btn-outline-primary" onclick="prevPage()" '+(currentPage===0?'disabled':'')+'><i class="bi bi-chevron-left"></i> Prev</button>'
+    +'<span class="small fw-semibold">Page '+(currentPage+1)+' / '+totalPages+'</span>'
+    +'<button class="btn btn-sm btn-outline-primary" onclick="nextPage()" '+(currentPage>=totalPages-1?'disabled':'')+'> Next <i class="bi bi-chevron-right"></i></button>'
+    +'</div></div>';
+
+  html += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered" style="font-size:.82rem; white-space:nowrap;"><thead><tr>';
+  d.columns.forEach(function(c){ html += '<th>'+c+'</th>'; });
+  html += '</tr></thead><tbody>';
+  pageData.forEach(function(row) {
+    html += '<tr>';
+    row.forEach(function(val){ html += '<td>'+(val===null?'':val)+'</td>'; });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+
+  document.getElementById('previewModalBody').innerHTML = html;
+}
+
+function prevPage() { if (currentPage > 0) { currentPage--; renderPaginatedTable(); } }
+function nextPage() { var totalPages = Math.ceil(fullCleaningData.data.length / pageSize); if (currentPage < totalPages-1) { currentPage++; renderPaginatedTable(); } }
 </script>
 {% endblock %}

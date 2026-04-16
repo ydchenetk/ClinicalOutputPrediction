@@ -126,7 +126,9 @@ def _run_pipeline(job_id, file_paths, steps, cleaning_cfg, binary_cfg, survival_
             first = cleaning_cfg.get("first", None)
             analytical_df = cleaning_mod.create_analytical_dataframe(config, first=first)
 
-            out_path = os.path.join(app.config["OUTPUT_FOLDER"], f"{job_id}_analytical.csv")
+            today = datetime.now().strftime("%Y-%m-%d")
+            out_filename = f"clean_analytical_dataset_{today}.csv"
+            out_path = os.path.join(app.config["OUTPUT_FOLDER"], f"{job_id}_{out_filename}")
             analytical_df.to_csv(out_path, index=False)
 
             results["cleaning"] = {
@@ -134,7 +136,9 @@ def _run_pipeline(job_id, file_paths, steps, cleaning_cfg, binary_cfg, survival_
                 "cols": len(analytical_df.columns),
                 "columns": analytical_df.columns.tolist(),
                 "csv_path": out_path,
-                "head": analytical_df.head(10).to_html(classes="table table-sm table-striped", index=False),
+                "download_name": out_filename,
+                "head": analytical_df.head(5).to_html(classes="table table-sm table-striped", index=False),
+                "full_json": analytical_df.to_json(orient="split"),
             }
             _log(job_id, f"Cleaning done – {len(analytical_df)} rows × {len(analytical_df.columns)} cols")
             jobs[job_id]["progress"] = 33
@@ -363,4 +367,4 @@ def download(job_id, filename):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, use_reloader=False)
