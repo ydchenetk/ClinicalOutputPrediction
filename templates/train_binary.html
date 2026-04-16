@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% set mode = 'train' %}
+{% set sidebar = true %}
+{% set page = 'binary' %}
+{% set show_exec = true %}
+
+{% block content %}
+<h5 class="fw-bold mb-1"><i class="bi bi-bullseye me-2" style="color:var(--primary);"></i>Binary Prediction Model</h5>
+<p class="text-muted small mb-3">Train &amp; evaluate classification models on the analytical data</p>
+
+<div class="config-section">
+  <div class="phase-label"><i class="bi bi-database"></i> Input Data</div>
+  <div class="mb-2">
+    <label class="form-label">Analytical CSV Path <span class="text-muted fw-normal">(Only If Cleaning Is Skipped)</span></label>
+    <input type="text" class="form-control form-control-sm" id="binary-analytical-path" placeholder="e.g. data/final_analytical_dataset.csv">
+  </div>
+  <div id="cleaning-status" class="small mb-2"></div>
+
+  <div class="phase-label"><i class="bi bi-gear"></i> Preprocess</div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="form-label">Target Variable (Y)</label><input type="text" class="form-control form-control-sm" id="binary-y" value="CRIT1FL"></div>
+    <div class="col-6"><label class="form-label">Split Method</label>
+      <select class="form-select form-select-sm" id="binary-method"><option value="skf" selected>Stratified K-Fold (SKF)</option><option value="simple">Simple Split</option></select></div>
+  </div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="form-label">Split Threshold</label><input type="number" class="form-control form-control-sm" id="binary-thresh" value="5"></div>
+    <div class="col-6"><label class="form-label">Drop Columns</label><select class="form-select form-select-sm col-multi" id="binary-drop" multiple></select></div>
+  </div>
+
+  <div class="phase-label"><i class="bi bi-funnel"></i> Initial Feature Selection</div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="form-label">Method</label>
+      <select class="form-select form-select-sm" id="binary-ifs-method"><option value="cm" selected>Correlation Matrix (CM)</option><option value="vif">VIF</option><option value="pca+vif">PCA + VIF</option></select></div>
+    <div class="col-6"><label class="form-label">Threshold</label><input type="number" class="form-control form-control-sm" id="binary-ifs-thresh" value="0.95" step="0.01"></div>
+  </div>
+  <div class="mb-2"><label class="form-label">Protected Features <span class="text-muted fw-normal">(Won't Be Dropped)</span></label><select class="form-select form-select-sm col-multi" id="binary-ifs-protect" multiple></select></div>
+
+  <div class="phase-label"><i class="bi bi-clipboard-data"></i> Evaluation Thresholds</div>
+  <div class="mb-2"><label class="form-label">Probability Thresholds</label><select class="form-select form-select-sm col-multi" id="binary-eval-thresh" multiple></select></div>
+</div>
+
+<div class="d-grid mt-3" style="max-width:300px;">
+  <button class="btn btn-primary" id="btn-run" data-label="Run Binary Prediction" onclick="runBinary()"><i class="bi bi-play-fill me-1"></i> Run Binary Prediction</button>
+</div>
+{% endblock %}
+
+{% block results %}
+<div class="result-section card" id="res-binary">
+  <div class="card-header d-flex align-items-center"><span class="badge bg-primary badge-step me-2">Step 2</span><span class="fw-semibold small">Binary Model Results</span></div>
+  <div class="card-body small" id="res-binary-body"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Populate dropdowns from cleaning output if available
+(function() {
+  if (cleaningOutputPath) {
+    document.getElementById('cleaning-status').innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Using cleaning output: '+cleaningOutputColumns.length+' columns available</span>';
+  } else {
+    document.getElementById('cleaning-status').innerHTML = '<span class="text-muted"><i class="bi bi-info-circle me-1"></i>No cleaning output found. Run Data Cleaning first or provide a CSV path above.</span>';
+  }
+  populateMultiSelect('binary-drop', cleaningOutputColumns, 'Select Columns To Drop …');
+  populateMultiSelect('binary-ifs-protect', cleaningOutputColumns, 'Select Features To Protect …');
+
+  // Threshold dropdown
+  var sel = document.getElementById('binary-eval-thresh');
+  var defaults = [0.50, 0.75, 0.90];
+  for (var pct = 0; pct <= 100; pct += 5) {
+    var val = (pct/100).toFixed(2);
+    var o = document.createElement('option');
+    o.value = val; o.textContent = pct+'%';
+    if (defaults.indexOf(parseFloat(val)) >= 0) o.selected = true;
+    sel.appendChild(o);
+  }
+  $(sel).select2({ theme:'bootstrap-5', placeholder:'Select Thresholds …', allowClear:true, width:'100%', closeOnSelect:false });
+})();
+
+function runBinary() {
+  var filePaths = {};
+  if (cleaningOutputPath) filePaths['analytical_csv'] = cleaningOutputPath;
+  var bp = document.getElementById('binary-analytical-path').value.trim();
+  if (bp) filePaths['analytical_csv'] = bp;
+
+  var binaryCfg = {
+    preprocess: { y:document.getElementById('binary-y').value, drop:getSelected('binary-drop'), method:document.getElementById('binary-method').value, thresh:parseFloat(document.getElementById('binary-thresh').value)||5 },
+    initial_feature_selection: { method:document.getElementById('binary-ifs-method').value, thresh:parseFloat(document.getElementById('binary-ifs-thresh').value)||0.95, protect:getSelected('binary-ifs-protect') },
+    evaluation: { thresholds:(function(){ var t={}; getSelected('binary-eval-thresh').forEach(function(v){ t[Math.round(parseFloat(v)*100)]=parseFloat(v); }); return t; })() }
+  };
+  runStep('binary', { steps:['binary'], file_paths:filePaths, cleaning_cfg:{}, binary_cfg:binaryCfg, survival_cfg:{} });
+}
+
+function renderResults(results, jobId) {
+  if (results.binary) {
+    var el = document.getElementById('res-binary'); el.classList.add('show');
+    var h = '<h6 class="fw-semibold">Model Comparison</h6><div class="table-responsive">'+results.binary.model_comparison+'</div>';
+    h += '<h6 class="fw-semibold mt-3">Top Feature Importances</h6><div class="table-responsive">'+results.binary.feature_importance+'</div>';
+    if (results.binary.metrics_train) h += '<h6 class="fw-semibold mt-3">Train Metrics</h6><pre class="bg-light p-2 rounded small">'+(typeof results.binary.metrics_train==='object'?JSON.stringify(results.binary.metrics_train,null,2):results.binary.metrics_train)+'</pre>';
+    if (results.binary.metrics_test) h += '<h6 class="fw-semibold mt-3">Test Metrics</h6><pre class="bg-light p-2 rounded small">'+(typeof results.binary.metrics_test==='object'?JSON.stringify(results.binary.metrics_test,null,2):results.binary.metrics_test)+'</pre>';
+    var figs = results.binary.figures||{};
+    for (var n in figs) { var l=n.replace(/_/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}); h+='<h6 class="fw-semibold mt-3">'+l+'</h6><img src="data:image/png;base64,'+figs[n]+'" alt="'+l+'">'; }
+    el.querySelector('.card-body').innerHTML = h;
+  }
+}
+</script>
+{% endblock %}

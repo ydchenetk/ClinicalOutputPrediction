@@ -12,7 +12,7 @@ from datetime import datetime
 
 import pandas as pd
 import numpy as np
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, redirect
 
 # ── Pipeline imports ──────────────────────────────────────────────────
 import importlib, sys
@@ -228,6 +228,31 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/train")
+def train_redirect():
+    return redirect("/train/cleaning")
+
+
+@app.route("/train/cleaning")
+def train_cleaning():
+    return render_template("train_cleaning.html")
+
+
+@app.route("/train/binary")
+def train_binary():
+    return render_template("train_binary.html")
+
+
+@app.route("/train/survival")
+def train_survival():
+    return render_template("train_survival.html")
+
+
+@app.route("/test")
+def test_page():
+    return render_template("test.html")
+
+
 @app.route("/list-files", methods=["POST"])
 def list_files():
     """List CSV files in a given directory path."""
@@ -247,14 +272,21 @@ def list_files():
 
 @app.route("/columns", methods=["POST"])
 def get_columns():
-    """Return column names from a CSV file path."""
+    """Return column names and a 5-row preview from a CSV file path."""
     data = request.get_json()
     file_path = data.get("path", "")
     if not file_path or not os.path.isfile(file_path):
         return jsonify({"error": f"File not found: {file_path}"}), 400
     try:
-        df = pd.read_csv(file_path, nrows=0)
-        return jsonify({"columns": df.columns.tolist()})
+        df_preview = pd.read_csv(file_path, nrows=5)
+        # Count rows efficiently without loading entire file
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            row_count = sum(1 for _ in f) - 1  # subtract header
+        return jsonify({
+            "columns": df_preview.columns.tolist(),
+            "preview": df_preview.to_html(classes="table table-sm table-striped table-bordered", index=False),
+            "rows": max(row_count, 0),
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clinical Output Prediction</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --primary:#2E5090; --primary-light:#4A7CC9; --primary-dark:#1E3A6E;
+      --accent:#5B9BD5; --accent-light:#D6E6F5;
+      --success:#3A8A5C; --warning:#D4A843;
+      --bg:#F4F7FB; --card-bg:#fff; --border:#D0DAE8; --text-muted:#6B7D99;
+      --sidebar-w:220px;
+    }
+    body { background:var(--bg); font-family:'Segoe UI',system-ui,sans-serif; font-size:.9rem; color:#1E293B; margin:0; }
+
+    /* Top navbar */
+    .top-nav { background:linear-gradient(135deg,var(--primary-dark),var(--primary)); height:56px; display:flex; align-items:center; padding:0 1.5rem; position:fixed; top:0; left:0; right:0; z-index:1030; }
+    .top-nav .brand { color:#fff; font-weight:700; font-size:1.1rem; text-decoration:none; display:flex; align-items:center; gap:.5rem; }
+    .top-nav .brand:hover { color:#fff; }
+    .top-nav .nav-right { margin-left:auto; display:flex; gap:1rem; }
+    .top-nav .nav-right a { color:rgba(255,255,255,.7); text-decoration:none; font-size:.85rem; font-weight:500; padding:.35rem .75rem; border-radius:6px; transition:all .2s; }
+    .top-nav .nav-right a:hover, .top-nav .nav-right a.active { color:#fff; background:rgba(255,255,255,.15); }
+
+    /* Sidebar */
+    .sidebar { position:fixed; top:56px; left:0; bottom:0; width:var(--sidebar-w); background:#fff; border-right:1px solid var(--border); padding:1rem 0; overflow-y:auto; z-index:1020; }
+    .sidebar .nav-section { padding:0 1rem; margin-bottom:.25rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); }
+    .sidebar .nav-link { display:flex; align-items:center; gap:.5rem; padding:.5rem 1rem; color:#1E293B; font-size:.85rem; font-weight:500; text-decoration:none; border-left:3px solid transparent; transition:all .15s; }
+    .sidebar .nav-link:hover { background:var(--accent-light); color:var(--primary); }
+    .sidebar .nav-link.active { background:var(--accent-light); color:var(--primary); border-left-color:var(--primary); font-weight:600; }
+    .sidebar .nav-link i { font-size:1rem; width:1.2rem; text-align:center; }
+
+    /* Main content */
+    .main-content { margin-left:var(--sidebar-w); margin-top:56px; padding:1.5rem 2rem 2rem; min-height:calc(100vh - 56px); }
+
+    /* Shared styles */
+    .config-section { background:var(--accent-light); border-radius:8px; padding:1rem; margin-top:.75rem; }
+    .phase-label { display:flex; align-items:center; gap:.35rem; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--primary); margin-bottom:.5rem; margin-top:0; }
+    .phase-label i { font-size:.85rem; width:1rem; text-align:center; }
+    .phase-label:not(:first-child) { margin-top:1rem; }
+    .config-section .form-label { font-size:.8rem; margin-bottom:2px; font-weight:500; }
+    .ds-card { border:1px solid var(--border); border-radius:8px; padding:.75rem; background:#fff; margin-bottom:.5rem; overflow:hidden; }
+    .ds-card .ds-header { display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem; }
+    .ds-card .ds-label { font-weight:700; font-size:.85rem; color:var(--primary); }
+    .ds-card .table { margin-bottom:0; white-space:nowrap; }
+    .btn-add-ds { border-style:dashed; border-color:var(--accent); color:var(--primary); }
+    .btn-add-ds:hover { background:var(--accent-light); border-color:var(--primary); }
+    .select2-container--bootstrap-5 .select2-selection { font-size:.82rem; min-height:32px; }
+    .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice { background:var(--accent-light); border-color:var(--accent); color:var(--primary-dark); }
+
+    /* Execution box */
+    .exec-box { background:#fff; border:1px solid var(--border); border-radius:10px; padding:1rem; margin-top:2rem; }
+    .log-box { background:#EDF2F9; color:#2E5090; border:1px solid var(--border); border-radius:8px; font-family:'Cascadia Code','Fira Code',monospace; font-size:.82rem; max-height:200px; overflow-y:auto; padding:.75rem; }
+    .log-box .log-time { color:var(--primary-light); font-weight:600; }
+    .log-box .log-entry { color:#3A4A6B; }
+    .progress { height:8px; border-radius:4px; }
+    .progress-bar { background:var(--primary); }
+    .result-section { display:none; } .result-section.show { display:block; }
+    .badge-step { font-size:.7rem; padding:.25em .6em; }
+    #results-area img { max-width:100%; border-radius:8px; margin:.5rem 0; }
+
+    .form-check-input:checked { background-color:var(--primary); border-color:var(--primary); }
+    .btn-primary { background:var(--primary); border-color:var(--primary); }
+    .btn-primary:hover { background:var(--primary-dark); border-color:var(--primary-dark); }
+    .btn-outline-primary { color:var(--primary); border-color:var(--primary); }
+    .btn-outline-primary:hover { background:var(--primary); border-color:var(--primary); color:#fff; }
+    .text-primary { color:var(--primary) !important; }
+    .badge.bg-success { background:var(--success) !important; }
+    .badge.bg-primary { background:var(--primary) !important; }
+    .badge.bg-warning { background:var(--warning) !important; color:#fff !important; }
+  </style>
+</head>
+<body>
+
+<!-- Top Navbar -->
+<div class="top-nav">
+  <a href="/" class="brand"><i class="bi bi-diagram-3-fill"></i> Clinical Output Prediction</a>
+  <div class="nav-right">
+    <a href="/train/cleaning" class="{% if mode == 'train' %}active{% endif %}">Train</a>
+    <a href="/test" class="{% if mode == 'test' %}active{% endif %}">Test</a>
+  </div>
+</div>
+
+{% if sidebar %}
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="nav-section mt-2">Training Pipeline</div>
+  <a href="/train/cleaning" class="nav-link {% if page == 'cleaning' %}active{% endif %}"><i class="bi bi-funnel"></i> Data Cleaning</a>
+  <a href="/train/binary" class="nav-link {% if page == 'binary' %}active{% endif %}"><i class="bi bi-bullseye"></i> Binary Prediction</a>
+  <a href="/train/survival" class="nav-link {% if page == 'survival' %}active{% endif %}"><i class="bi bi-clock-history"></i> Time-to-Response</a>
+</div>
+{% endif %}
+
+<div class="main-content" {% if not sidebar %}style="margin-left:0;"{% endif %}>
+  {% block content %}{% endblock %}
+
+  {% if show_exec %}
+  <!-- Execution Box -->
+  <div class="exec-box">
+    <h6 class="fw-semibold small text-muted text-uppercase mb-2"><i class="bi bi-terminal me-1"></i> Execution</h6>
+    <div class="mb-2" id="progress-area" style="display:none;">
+      <div class="d-flex justify-content-between small mb-1">
+        <span id="status-text" class="fw-semibold">Queued</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress"><div class="progress-bar" id="progress-bar" role="progressbar" style="width:0%"></div></div>
+    </div>
+    <div class="log-box mb-2" id="log-box"><div class="log-entry text-muted">Waiting for pipeline run …</div></div>
+    <div id="results-area">{% block results %}{% endblock %}</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Fullscreen Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-semibold" id="previewModalTitle">Data Preview</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2" style="overflow:auto; font-size:.82rem;" id="previewModalBody"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+/* ═══════════════════ SHARED UTILITIES ═══════════════════ */
+var cleaningOutputPath = localStorage.getItem('cleaningOutputPath') || null;
+var cleaningOutputColumns = JSON.parse(localStorage.getItem('cleaningOutputColumns') || '[]');
+
+function getSelected(id) {
+  var sel = document.getElementById(id);
+  if (!sel) return [];
+  return Array.from(sel.selectedOptions).map(function(o){ return o.value; });
+}
+
+function populateMultiSelect(selId, columns, placeholder) {
+  var sel = document.getElementById(selId);
+  if (!sel) return;
+  var prev = getSelected(selId);
+  if ($(sel).hasClass('select2-hidden-accessible')) $(sel).select2('destroy');
+  sel.innerHTML = '';
+  columns.forEach(function(c){ var o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+  prev.forEach(function(v){ var o=sel.querySelector('option[value="'+v+'"]'); if(o) o.selected=true; });
+  $(sel).select2({ theme:'bootstrap-5', placeholder:placeholder, allowClear:true, width:'100%', closeOnSelect:false });
+}
+
+var pollTimer = null;
+function runStep(step, payload) {
+  var btn = document.getElementById('btn-run');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Running …'; }
+  document.getElementById('progress-area').style.display = '';
+  document.getElementById('log-box').innerHTML = '';
+
+  fetch('/run', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+  .then(function(r){ return r.json(); })
+  .then(function(data){ if(data.error){alert(data.error);resetRunBtn();return;} pollStatus(data.job_id, step); })
+  .catch(function(err){ alert('Request failed: '+err); resetRunBtn(); });
+}
+
+function pollStatus(jobId, step) {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(function() {
+    fetch('/status/'+jobId).then(function(r){return r.json();}).then(function(data) {
+      document.getElementById('progress-bar').style.width = data.progress+'%';
+      document.getElementById('progress-pct').textContent = data.progress+'%';
+      document.getElementById('status-text').textContent = data.status==='running'?'Running …':data.status==='done'?'Completed':data.status==='error'?'Error':'Queued';
+      var lb = document.getElementById('log-box');
+      lb.innerHTML = data.logs.map(function(l){ var m=l.match(/^\[(.+?)\] (.*)$/); return m?'<div class="log-entry"><span class="log-time">'+m[1]+'</span> '+m[2]+'</div>':'<div class="log-entry">'+l+'</div>'; }).join('');
+      lb.scrollTop = lb.scrollHeight;
+      if (data.status==='done'||data.status==='error') {
+        clearInterval(pollTimer); resetRunBtn();
+        if (data.status==='error') lb.innerHTML += '<div class="log-entry text-danger mt-2">'+data.error.replace(/\n/g,'<br>')+'</div>';
+        if (data.results) {
+          if (data.results.cleaning) {
+            cleaningOutputPath = data.results.cleaning.csv_path;
+            cleaningOutputColumns = data.results.cleaning.columns || [];
+            localStorage.setItem('cleaningOutputPath', cleaningOutputPath);
+            localStorage.setItem('cleaningOutputColumns', JSON.stringify(cleaningOutputColumns));
+          }
+          if (typeof renderResults === 'function') renderResults(data.results, jobId);
+        }
+      }
+    });
+  }, 1000);
+}
+
+function resetRunBtn() {
+  var btn = document.getElementById('btn-run');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> ' + (btn.dataset.label||'Run'); }
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% set mode = 'train' %}
+{% set sidebar = true %}
+{% set page = 'survival' %}
+{% set show_exec = true %}
+
+{% block content %}
+<h5 class="fw-bold mb-1"><i class="bi bi-clock-history me-2" style="color:var(--primary);"></i>Time-to-Response Model</h5>
+<p class="text-muted small mb-3">Survival analysis with Cox PH / AFT models</p>
+
+<div class="config-section">
+  <div class="phase-label"><i class="bi bi-database"></i> Input Data</div>
+  <div class="mb-2"><label class="form-label">Raw PASI CSV Path</label><input type="text" class="form-control form-control-sm" id="surv-pasi-path" placeholder="e.g. data/adpasi.csv"></div>
+  <div class="mb-2">
+    <div class="form-check form-switch mb-1">
+      <input class="form-check-input" type="checkbox" id="surv-include-analytical" checked onchange="toggleSurvAnalytical()">
+      <label class="form-check-label small fw-semibold" for="surv-include-analytical">Include Analytical Dataset</label>
+    </div>
+    <div id="surv-analytical-group">
+      <label class="form-label">Analytical CSV Path <span class="text-muted fw-normal">(Uses Cleaning Output If Empty)</span></label>
+      <input type="text" class="form-control form-control-sm" id="surv-analytical-path" placeholder="e.g. data/final_analytical_dataset.csv">
+    </div>
+  </div>
+  <div id="cleaning-status" class="small mb-2"></div>
+
+  <div class="phase-label"><i class="bi bi-gear"></i> Preprocess</div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="form-label">Target (Y / Event)</label><input type="text" class="form-control form-control-sm" id="surv-y" value="CRIT1FL"></div>
+    <div class="col-6"><label class="form-label">Duration Column</label><input type="text" class="form-control form-control-sm" id="surv-dur" value="Time_to_Response"></div>
+  </div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="form-label">Start Date Column</label><input type="text" class="form-control form-control-sm" id="surv-start" value="TRTSDT"></div>
+    <div class="col-6"><label class="form-label">Record Date Column</label><input type="text" class="form-control form-control-sm" id="surv-record" value="ADT"></div>
+  </div>
+  <div class="mb-2"><label class="form-label">Drop Columns</label><select class="form-select form-select-sm col-multi" id="surv-drop" multiple></select></div>
+
+  <div class="phase-label"><i class="bi bi-cpu"></i> Modeling</div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="form-label">Top N Features</label><input type="number" class="form-control form-control-sm" id="surv-topn" value="30"></div>
+    <div class="col-6"><label class="form-label">Feature Selection</label>
+      <select class="form-select form-select-sm" id="surv-fast"><option value="true" selected>Fast (Filter → Backward)</option><option value="false">Comprehensive (Forward → Backward)</option></select></div>
+  </div>
+
+  <div class="phase-label"><i class="bi bi-clipboard-data"></i> Evaluation</div>
+  <div class="row g-2 mb-2">
+    <div class="col-6"><label class="form-label">Evaluation Weeks</label><select class="form-select form-select-sm col-multi" id="surv-weeks" multiple></select></div>
+    <div class="col-6"><label class="form-label">Probability Thresholds</label><select class="form-select form-select-sm col-multi" id="surv-thresh" multiple></select></div>
+  </div>
+</div>
+
+<div class="d-grid mt-3" style="max-width:300px;">
+  <button class="btn btn-primary" id="btn-run" data-label="Run Time-to-Response" onclick="runSurvival()"><i class="bi bi-play-fill me-1"></i> Run Time-to-Response</button>
+</div>
+{% endblock %}
+
+{% block results %}
+<div class="result-section card" id="res-survival">
+  <div class="card-header d-flex align-items-center"><span class="badge bg-warning text-dark badge-step me-2">Step 3</span><span class="fw-semibold small">Time-to-Response Results</span></div>
+  <div class="card-body small" id="res-survival-body"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSurvAnalytical() {
+  document.getElementById('surv-analytical-group').style.display = document.getElementById('surv-include-analytical').checked ? '' : 'none';
+}
+
+(function() {
+  if (cleaningOutputPath) {
+    document.getElementById('cleaning-status').innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Using cleaning output: '+cleaningOutputColumns.length+' columns available</span>';
+  } else {
+    document.getElementById('cleaning-status').innerHTML = '<span class="text-muted"><i class="bi bi-info-circle me-1"></i>No cleaning output found. Run Data Cleaning first or provide CSV paths above.</span>';
+  }
+  populateMultiSelect('surv-drop', cleaningOutputColumns, 'Select Columns To Drop …');
+
+  // Weeks
+  var wSel = document.getElementById('surv-weeks');
+  var dw = [1,2,4,8,12,16];
+  for (var w=1;w<=52;w++) { var o=document.createElement('option'); o.value=w; o.textContent='Week '+w; if(dw.indexOf(w)>=0) o.selected=true; wSel.appendChild(o); }
+  $(wSel).select2({ theme:'bootstrap-5', placeholder:'Select Weeks …', allowClear:true, width:'100%', closeOnSelect:false });
+
+  // Thresholds
+  var tSel = document.getElementById('surv-thresh');
+  var dt = [0.50,0.75,0.90];
+  for (var p=0;p<=100;p+=5) { var v=(p/100).toFixed(2); var o2=document.createElement('option'); o2.value=v; o2.textContent=p+'%'; if(dt.indexOf(parseFloat(v))>=0) o2.selected=true; tSel.appendChild(o2); }
+  $(tSel).select2({ theme:'bootstrap-5', placeholder:'Select Thresholds …', allowClear:true, width:'100%', closeOnSelect:false });
+})();
+
+function runSurvival() {
+  var filePaths = {};
+  var survPasi = document.getElementById('surv-pasi-path').value.trim();
+  if (survPasi) filePaths['surv_pasi_csv'] = survPasi;
+  var includeAnalytical = document.getElementById('surv-include-analytical').checked;
+  if (includeAnalytical && cleaningOutputPath) filePaths['analytical_csv'] = cleaningOutputPath;
+  var survAnalytical = document.getElementById('surv-analytical-path').value.trim();
+  if (includeAnalytical && survAnalytical) filePaths['surv_analytical_csv'] = survAnalytical;
+
+  var survY = document.getElementById('surv-y').value;
+  var survivalCfg = {
+    include_analytical: includeAnalytical,
+    preprocess: { y:survY, start_date:document.getElementById('surv-start').value, record_date:document.getElementById('surv-record').value, drop:getSelected('surv-drop') },
+    modeling: { dur_col:document.getElementById('surv-dur').value, event_col:survY, top_n:parseInt(document.getElementById('surv-topn').value)||30, fast:document.getElementById('surv-fast').value==='true' },
+    eval: { dur_col:document.getElementById('surv-dur').value, event_col:survY, weeks:getSelected('surv-weeks').map(Number), thresh:getSelected('surv-thresh').map(Number) }
+  };
+  runStep('survival', { steps:['survival'], file_paths:filePaths, cleaning_cfg:{}, binary_cfg:{}, survival_cfg:survivalCfg });
+}
+
+function renderResults(results, jobId) {
+  if (results.survival) {
+    var el = document.getElementById('res-survival'); el.classList.add('show');
+    el.querySelector('.card-body').innerHTML = '<div class="row g-3 mb-3">'
+      +'<div class="col-6"><div class="p-3 bg-light rounded text-center"><div class="small text-muted">Train C-Index</div><div class="fs-4 fw-bold text-primary">'+results.survival.train_c_index.toFixed(4)+'</div></div></div>'
+      +'<div class="col-6"><div class="p-3 bg-light rounded text-center"><div class="small text-muted">Test C-Index</div><div class="fs-4 fw-bold text-primary">'+results.survival.test_c_index.toFixed(4)+'</div></div></div></div>'
+      +'<h6 class="fw-semibold">Train Predictions (Sample)</h6><div class="table-responsive">'+results.survival.train_head+'</div>'
+      +'<h6 class="fw-semibold mt-3">Test Predictions (Sample)</h6><div class="table-responsive">'+results.survival.test_head+'</div>';
+  }
+}
+</script>
+{% endblock %}

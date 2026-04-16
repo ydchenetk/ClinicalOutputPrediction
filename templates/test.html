@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set mode = 'test' %}
+{% set sidebar = false %}
+{% set show_exec = false %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-center" style="min-height:calc(100vh - 120px);">
+  <div class="text-center">
+    <i class="bi bi-clipboard-check" style="font-size:3rem; color:var(--text-muted);"></i>
+    <h3 class="fw-bold mt-3 mb-1" style="color:var(--primary-dark);">Test Mode</h3>
+    <p class="text-muted mb-4">Coming soon — load trained models and run predictions on new data.</p>
+    <a href="/" class="btn btn-outline-primary"><i class="bi bi-arrow-left me-1"></i>Back to Home</a>
+  </div>
+</div>
+{% endblock %}

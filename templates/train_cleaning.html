@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% set mode = 'train' %}
+{% set sidebar = true %}
+{% set page = 'cleaning' %}
+{% set show_exec = true %}
+
+{% block content %}
+<h5 class="fw-bold mb-1"><i class="bi bi-funnel me-2" style="color:var(--primary);"></i>Data Cleaning</h5>
+<p class="text-muted small mb-3">Merge and clean raw domain CSVs into an analytical dataset</p>
+
+<div class="config-section">
+  <div class="phase-label"><i class="bi bi-folder2-open"></i> Data Directory</div>
+  <div class="input-group input-group-sm mb-2">
+    <input type="text" class="form-control" id="data-dir" placeholder="Path to CSV directory">
+    <button class="btn btn-outline-primary" onclick="loadDirectory()"><i class="bi bi-search me-1"></i>Scan</button>
+  </div>
+  <div id="dir-status" class="small text-muted mb-2"></div>
+
+  <div id="datasets-area" style="display:none;">
+    <div class="phase-label"><i class="bi bi-stack"></i> Configure Datasets</div>
+    <div id="dataset-cards"></div>
+    <button class="btn btn-sm btn-outline-secondary btn-add-ds" onclick="addDataset()"><i class="bi bi-plus-circle me-1"></i>Add Dataset</button>
+    <div class="mt-3">
+      <label class="form-label">Anchor Dataset (First)</label>
+      <select class="form-select form-select-sm" id="anchor-domain"></select>
+    </div>
+  </div>
+</div>
+
+<div class="d-grid mt-3" style="max-width:300px;">
+  <button class="btn btn-primary" id="btn-run" data-label="Run Data Cleaning" onclick="runCleaning()"><i class="bi bi-play-fill me-1"></i> Run Data Cleaning</button>
+</div>
+{% endblock %}
+
+{% block results %}
+<div class="result-section card" id="res-cleaning">
+  <div class="card-header d-flex align-items-center"><span class="badge bg-success badge-step me-2">Step 1</span><span class="fw-semibold small">Cleaning Results</span></div>
+  <div class="card-body small" id="res-cleaning-body"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var basePath = '';
+var availableFiles = [];
+var datasets = [];
+var dsCounter = 0;
+
+var PIPELINE_TYPES = [
+  { value:'general', label:'General (Analytical Data Pipeline)', paramKey:'idx_cols' },
+  { value:'adsl',    label:'Subject-Level (ADSL Pipeline)',      paramKey:'cols' },
+  { value:'adae',    label:'Adverse Events (ADAE Pipeline)',     paramKey:'cols' },
+];
+
+async function loadDirectory() {
+  var dir = document.getElementById('data-dir').value.trim();
+  if (!dir) return;
+  try {
+    var resp = await fetch('/list-files', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:dir}) });
+    var data = await resp.json();
+    if (data.error) { document.getElementById('dir-status').innerHTML = '<span class="text-danger">'+data.error+'</span>'; return; }
+    basePath = data.path;
+    availableFiles = data.files;
+    document.getElementById('dir-status').innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>'+availableFiles.length+' CSV files found in <code>'+basePath+'</code></span>';
+    datasets = []; dsCounter = 0;
+    document.getElementById('dataset-cards').innerHTML = '';
+    document.getElementById('datasets-area').style.display = '';
+  } catch(err) {
+    document.getElementById('dir-status').innerHTML = '<span class="text-danger">Error: '+err.message+'</span>';
+  }
+}
+
+function addDataset() {
+  dsCounter++;
+  var ds = { id:dsCounter, file:'', type:'general', columns:[], domainKey:'ds'+dsCounter, preview:'', totalRows:0 };
+  datasets.push(ds);
+  renderDatasetCard(ds);
+}
+
+function removeDataset(id) {
+  datasets = datasets.filter(function(d){ return d.id !== id; });
+  var el = document.getElementById('ds-card-'+id);
+  if (el) el.remove();
+}
+
+function getDs(id) { return datasets.find(function(d){ return d.id === id; }); }
+
+function renderDatasetCard(ds) {
+  var container = document.getElementById('dataset-cards');
+  var div = document.createElement('div');
+  div.className = 'ds-card'; div.id = 'ds-card-'+ds.id;
+  var fileOpts = '<option value="">— Select File —</option>';
+  availableFiles.forEach(function(f){ fileOpts += '<option value="'+f+'">'+f+'</option>'; });
+  var typeOpts = '';
+  PIPELINE_TYPES.forEach(function(t){ typeOpts += '<option value="'+t.value+'">'+t.label+'</option>'; });
+  div.innerHTML = '<div class="ds-header"><span class="ds-label">Dataset '+ds.id+'</span>'
+    +'<button class="btn btn-sm btn-outline-danger ms-auto py-0 px-1" onclick="removeDataset('+ds.id+')"><i class="bi bi-x-lg"></i></button></div>'
+    +'<div class="row g-2 mb-2">'
+    +'<div class="col-6"><label class="form-label">File</label><select class="form-select form-select-sm" id="ds-file-'+ds.id+'" onchange="onDsFileChange('+ds.id+')">'+fileOpts+'</select></div>'
+    +'<div class="col-6"><label class="form-label">Pipeline Type</label><select class="form-select form-select-sm" id="ds-type-'+ds.id+'" onchange="onDsTypeChange('+ds.id+')">'+typeOpts+'</select></div>'
+    +'</div><div class="ds-config" id="ds-config-'+ds.id+'"><div class="text-muted small">Select a file to load columns.</div></div>';
+  container.appendChild(div);
+}
+
+async function onDsFileChange(id) {
+  var ds = getDs(id);
+  ds.file = document.getElementById('ds-file-'+id).value;
+  ds.columns = []; ds.preview = ''; ds.totalRows = 0;
+  if (!ds.file) { renderDsConfig(ds); return; }
+  try {
+    var resp = await fetch('/columns', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:basePath+'/'+ds.file}) });
+    var data = await resp.json();
+    if (data.columns) ds.columns = data.columns;
+    if (data.preview) ds.preview = data.preview;
+    if (data.rows) ds.totalRows = data.rows;
+  } catch(e) {}
+  renderDsConfig(ds);
+  refreshAnchorDropdown();
+}
+
+function onDsTypeChange(id) { var ds = getDs(id); ds.type = document.getElementById('ds-type-'+id).value; renderDsConfig(ds); }
+
+function renderDsConfig(ds) {
+  var el = document.getElementById('ds-config-'+ds.id);
+  if (!ds.columns.length) { el.innerHTML = '<div class="text-muted small">No columns loaded yet.</div>'; return; }
+  var h = '';
+  if (ds.preview) {
+    h += '<div class="mb-2"><div class="d-flex align-items-center mb-1">'
+      +'<label class="form-label fw-semibold mb-0">Preview <span class="text-muted fw-normal">('+ds.totalRows+' rows × '+ds.columns.length+' cols — first 5)</span></label>'
+      +'<button class="btn btn-sm btn-outline-secondary ms-auto py-0 px-2" onclick="expandPreview('+ds.id+')"><i class="bi bi-arrows-fullscreen"></i></button></div>'
+      +'<div style="max-height:160px; width:0; min-width:100%; overflow:auto; font-size:.78rem; border:1px solid var(--border); border-radius:6px; background:#fff;">'+ds.preview+'</div></div>';
+  }
+  var colOpts = ds.columns.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join('');
+  var colOptsE = '<option value="">Select Column …</option>'+colOpts;
+  var paramLabel = ds.type==='general' ? 'idx_cols' : 'cols';
+  h += '<div class="mb-2"><label class="form-label fw-semibold">Columns ('+paramLabel+')</label><select class="form-select form-select-sm col-multi" id="ds-cols-'+ds.id+'" multiple>'+colOpts+'</select></div>';
+  if (ds.type === 'general') {
+    h += '<div class="mb-2"><label class="form-label fw-semibold">Target Variable <span class="text-muted fw-normal">(Optional)</span></label><select class="form-select form-select-sm col-multi" id="ds-target-'+ds.id+'" multiple>'+colOpts+'</select></div>';
+    h += '<div class="mb-2"><label class="form-label fw-semibold">Target Visit <span class="text-muted fw-normal">(Optional)</span></label><div class="row g-2"><div class="col-6"><select class="form-select form-select-sm" id="ds-tv-col-'+ds.id+'" onchange="loadDsUniqueValues('+ds.id+',\'ds-tv-col-'+ds.id+'\',\'ds-tv-val-'+ds.id+'\')">'+colOptsE+'</select></div><div class="col-6"><select class="form-select form-select-sm" id="ds-tv-val-'+ds.id+'"><option value="">Select Column First</option></select></div></div></div>';
+    h += '<div class="mb-0"><label class="form-label fw-semibold">Filter Variable Value <span class="text-muted fw-normal">(Optional)</span></label><div class="row g-2"><div class="col-6"><select class="form-select form-select-sm" id="ds-fv-col-'+ds.id+'" onchange="loadDsUniqueValues('+ds.id+',\'ds-fv-col-'+ds.id+'\',\'ds-fv-vals-'+ds.id+'\')">'+colOptsE+'</select></div><div class="col-6"><select class="form-select form-select-sm col-multi" id="ds-fv-vals-'+ds.id+'" multiple><option value="">Select Column First</option></select></div></div></div>';
+  }
+  el.innerHTML = h;
+  $('#ds-config-'+ds.id+' .col-multi').select2({ theme:'bootstrap-5', placeholder:'Select …', allowClear:true, width:'100%', closeOnSelect:false });
+}
+
+async function loadDsUniqueValues(dsId, colSelId, valSelId) {
+  var ds = getDs(dsId), col = document.getElementById(colSelId).value, valSel = document.getElementById(valSelId);
+  if (!col||!ds.file) { valSel.innerHTML = '<option value="">Select Column First</option>'; return; }
+  valSel.innerHTML = '<option value="">Loading …</option>';
+  try {
+    var resp = await fetch('/unique-values', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:basePath+'/'+ds.file, column:col}) });
+    var data = await resp.json();
+    if (data.error) { valSel.innerHTML = '<option value="">'+data.error+'</option>'; return; }
+    valSel.innerHTML = '';
+    data.values.forEach(function(v){ var o=document.createElement('option'); o.value=v; o.textContent=v; valSel.appendChild(o); });
+    if (valSel.multiple) $(valSel).select2({ theme:'bootstrap-5', placeholder:'Select Values …', allowClear:true, width:'100%', closeOnSelect:false });
+  } catch(e) { valSel.innerHTML = '<option value="">Error</option>'; }
+}
+
+function expandPreview(dsId) {
+  var ds = getDs(dsId);
+  if (!ds||!ds.preview) return;
+  document.getElementById('previewModalTitle').textContent = 'Dataset '+ds.id+' — '+ds.file+' ('+ds.totalRows+' rows × '+ds.columns.length+' cols)';
+  document.getElementById('previewModalBody').innerHTML = ds.preview;
+  new bootstrap.Modal(document.getElementById('previewModal')).show();
+}
+
+function refreshAnchorDropdown() {
+  var sel = document.getElementById('anchor-domain');
+  sel.innerHTML = '<option value="">None</option>';
+  datasets.forEach(function(ds){ if(ds.file){ var o=document.createElement('option'); o.value=ds.domainKey; o.textContent='Dataset '+ds.id+' ('+ds.file+')'; sel.appendChild(o); } });
+}
+
+function runCleaning() {
+  var domains = {}, filePaths = {};
+  datasets.forEach(function(ds) {
+    if (!ds.file) return;
+    var key = ds.type==='adsl'?'adsl':ds.type==='adae'?'adae':ds.domainKey;
+    filePaths[key] = basePath+'/'+ds.file;
+    var cols = getSelected('ds-cols-'+ds.id);
+    var paramKey = ds.type==='general'?'idx_cols':'cols';
+    var params = {}; params[paramKey] = cols;
+    if (ds.type==='general') {
+      var target = getSelected('ds-target-'+ds.id); if (target.length) params.target_variable = target;
+      var tvVal = document.getElementById('ds-tv-val-'+ds.id); if (tvVal&&tvVal.value!=='') { var n=Number(tvVal.value); params.target_visit=isNaN(n)?tvVal.value:n; }
+      var fvCol = document.getElementById('ds-fv-col-'+ds.id); var fvVals = getSelected('ds-fv-vals-'+ds.id);
+      if (fvCol&&fvCol.value&&fvVals.length) { params.filter_var_value={}; params.filter_var_value[fvCol.value]=fvVals; }
+    }
+    domains[key] = params;
+  });
+  var anchor = document.getElementById('anchor-domain').value || null;
+  runStep('clean', { steps:['clean'], file_paths:filePaths, cleaning_cfg:{domains:domains, filePaths:filePaths, first:anchor}, binary_cfg:{}, survival_cfg:{} });
+}
+
+function renderResults(results, jobId) {
+  if (results.cleaning) {
+    var el = document.getElementById('res-cleaning'); el.classList.add('show');
+    el.querySelector('.card-body').innerHTML = '<p><strong>'+results.cleaning.rows+'</strong> rows × <strong>'+results.cleaning.cols+'</strong> columns</p>'
+      +'<div class="table-responsive">'+results.cleaning.head+'</div>'
+      +'<a href="/download/'+jobId+'/analytical.csv" class="btn btn-sm btn-outline-primary mt-2"><i class="bi bi-download me-1"></i>Download Analytical CSV</a>';
+  }
+}
+</script>
+{% endblock %}
